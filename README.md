@@ -15,6 +15,7 @@ The generate_path_material_csv.py file can be used to generate the csv used by d
 datasets 
 └───objectfolder_real
     |   label.json
+    |   path_material.csv
     └───touch
 unitouch
 └─── ...
