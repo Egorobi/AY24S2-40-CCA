@@ -16,14 +16,14 @@ datasets
 └───objectfolder_real
     └───touch
 unitouch
-classification_tta_zero.py
-...
+└─── ...
+(repository files)
 ```
 
 ## Files
-classification_tta_zero.py - classification code and demo using the ZERO TTA method
-tta_gpu2.py - classification demo using the TPT method
-Augmix.py - augmentaion functions used by TPT
-dataset_classification_zero.py - runs ZERO aided classification on a given dataset and saves results
-dataset_classification_tpt.py - runs TPT aided classification on a given dataset
-evaluate_backup.py - calculates metrics for saved classificaiton results
+ - classification_tta_zero.py - classification code and demo using the ZERO TTA method
+ - tta_gpu2.py - classification demo using the TPT method
+ - Augmix.py - augmentaion functions used by TPT
+ - dataset_classification_zero.py - runs ZERO aided classification on a given dataset and saves results
+ - dataset_classification_tpt.py - runs TPT aided classification on a given dataset
+ - evaluate_backup.py - calculates metrics for saved classificaiton results
