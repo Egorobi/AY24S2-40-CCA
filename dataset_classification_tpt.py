@@ -1,5 +1,5 @@
-import unitouch.ImageBind.data as data
-from unitouch.ImageBind.models.x2touch_model_part import x2touch
+import ImageBind.data as data
+from ImageBind.models.x2touch_model_part import x2touch
 import torch
 import os
 import pandas as pd
@@ -22,26 +22,26 @@ os.environ["LD_LIBRARY_PATH"] = "/usr/lib/cuda/lib64"
 
 dataset = "objectfolder_2.0"
 progress_dir = f"./datasets/evaluation/{dataset}/"
-dataset = pd.read_csv(f"./datasets/objectfolder_2/path_material.csv")
+dataset = pd.read_csv(f"./datasets/objectfolder_real/path_material.csv")
 
 deepspeed_config = {
     "train_micro_batch_size_per_gpu": 1,
 
-    #"optimizer": {
-    #    "type": "AdamW",
-    #    "params": {
-    #        "lr": 1e-4
-    #    }
-    #},
+    "optimizer": {
+        "type": "AdamW",
+        "params": {
+            "lr": 1e-4
+        }
+    },
 
     "zero_optimization": {
-        "stage": 2,  # ZeRO Stage 2 优化
+        "stage": 2,  # ZeRO Stage 2
         "offload_optimizer": {"device": "cpu"},
-        "contiguous_gradients": False , # 关闭连续梯度优化以节省内存
+        "contiguous_gradients": False ,
        "reduce_bucket_size": 5e8
     },
-    "fp16": {"enabled": False,   #是否启用混合精度训练
-             "loss_scale": 0,  # 动态损失缩放
+    "fp16": {"enabled": False,
+             "loss_scale": 0,
              "initial_scale_power": 16,
              "loss_scale_window": 1000,
              "hysteresis": 2
@@ -63,32 +63,24 @@ def avg_entropy(outputs):
 
 def test_time_tuning(model, inputs, optimizer, args):
     selected_idx = None
-    print("torch.cuda.device_count:",torch.cuda.device_count())
     for j in range(args.tta_steps):
         for key in inputs:
             inputs[key] = inputs[key].to(model.device)
         embeddings = model(inputs)
         similarity = embeddings["touch"] @ embeddings["text"].T
         logits = torch.softmax(similarity, dim=-1)
-        #print(len(logits))
         if selected_idx is not None:
             logits = logits[selected_idx]
         else:
             logits, selected_idx = select_confident_samples(logits, args.selection_p)
-        #print(len(logits))
         loss = avg_entropy(logits)
-        # DeepSpeed 自动处理梯度更新
         model.backward(loss)
-        #model.backward(loss,retain_graph=True)
-        # 梯度裁剪
-        #torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
         model.step()
         model.zero_grad()
-        # 添加进程同步
         if torch.distributed.is_initialized():
             torch.distributed.barrier()
-        print(f"第 {j+1}/{args.tta_steps} 次循环 loss值: {loss.item():.4f}")
-        torch.cuda.empty_cache()  # 释放显存
+        #print(f"第 {j+1}/{args.tta_steps} times loss: {loss.item():.4f}")
+        torch.cuda.empty_cache()
 
     return model
 
@@ -100,7 +92,7 @@ def classification_basic(model, inputs, classes):
     text_embeddings = embeddings["text"]
 
     # compute similarity
-    similarity = touch_embeddings @ text_embeddings.T  # 形状: [2, 2]
+    similarity = touch_embeddings @ text_embeddings.T
     probs = torch.softmax(similarity, dim=-1)
 
     return classes[probs.argmax()]
@@ -116,11 +108,13 @@ model = x2touch(pretrained=True)
 model.eval()
 model = model.to(device)
 inputs = {}
-params = [p for p in model.parameters() if p.requires_grad]
-optimizer = DeepSpeedCPUAdam(model.parameters(), lr=1e-4, weight_decay=0.01, adamw_mode=True)
+text_params = []
+
+text_params = [model.modality_preprocessors.text.token_embedding.weight]
+optimizer = DeepSpeedCPUAdam(text_params, lr=1e-4, weight_decay=0.01, adamw_mode=True)
 model, optimizer, _, _ = deepspeed.initialize(model=model, optimizer=optimizer, config=deepspeed_config)
 
-dataset = pd.read_csv("./datasets/objectfolder_2/path_material.csv")
+dataset = pd.read_csv("./datasets/objectfolder_real/path_material.csv")
 print(dataset.head())
 
 label_to_material_dict = {0: "wood",
@@ -145,7 +139,8 @@ material_prompts = data.load_and_transform_text(material_prompts, device=device)
 predictions_basic = []
 
 # slicing for testing
-dataset = dataset.iloc[:100]
+dataset=dataset.sample(frac=1).reset_index(drop=True)
+dataset = dataset.iloc[:]
 
 for idx, row in tqdm(dataset.iterrows(), total=len(dataset)):
     touch_path = [row["path"]]
@@ -179,18 +174,17 @@ for idx, row in tqdm(dataset.iterrows(), total=len(dataset)):
     }
 
     args = type('', (), {})()
-    args.tta_steps = 4
+    args.tta_steps = 3
     args.selection_p = 0.5
-    model = test_time_tuning(model, inputs, optimizer, args)
-    #model = model.to("cuda:0")
+    model1 = test_time_tuning(model, inputs, optimizer, args)
 
     inputs11 = {
         "touch": touch11,
         "text": material_prompts
     }
-    prediction = classification_basic(model, inputs11, all_materials)
+    prediction = classification_basic(model1, inputs11, all_materials)
     predictions_basic.append(prediction)
-    if (idx + 1) % 100 == 0:
+    if (idx + 1) % 500 == 0:
         #save_results(predictions_basic, targets)
         accuracy = accuracy_score(targets, predictions_basic)
         print("CLASSIFICATION ACCURACY: ")
