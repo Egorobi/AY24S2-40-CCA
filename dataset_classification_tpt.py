@@ -17,8 +17,6 @@ from deepspeed.ops.adam import DeepSpeedCPUAdam
 
 device = "cuda" if torch.cuda.is_available() else "cpu"
 
-os.environ["CUDA_HOME"] = "/usr/lib/cuda"
-os.environ["LD_LIBRARY_PATH"] = "/usr/lib/cuda/lib64"
 
 dataset = "objectfolder_2.0"
 progress_dir = f"./datasets/evaluation/{dataset}/"
@@ -40,7 +38,7 @@ deepspeed_config = {
         "contiguous_gradients": False ,
        "reduce_bucket_size": 5e8
     },
-    "fp16": {"enabled": False,
+    "fp16": {"enabled": True,
              "loss_scale": 0,
              "initial_scale_power": 16,
              "loss_scale_window": 1000,
